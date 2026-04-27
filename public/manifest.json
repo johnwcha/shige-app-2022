@@ -1,0 +1,21 @@
+{
+    "name": "詩歌",
+    "short_name": "詩歌",
+    "description": "詩歌",
+    "icons": [
+      {
+        "src": "/shige192.png",
+        "sizes": "192x192",
+        "type": "image/png"
+      },
+      {
+        "src": "/shige512.png",
+        "sizes": "512x512",
+        "type": "image/png"
+      }
+    ],
+    "start_url": "/index.html",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#4a90e2"
+  }

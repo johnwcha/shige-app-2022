@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/shige192.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="manifest" href="/manifest.json">
+    <!-- <script src="https://cdn.tailwindcss.com"></script> -->
+    <title> 詩歌 </title>
+    <link rel="stylesheet" href="./style.css">
+  </head>
+
+  <body>
+    <!-- Landing Page Hero Section -->
+    <div id="landing-page" class="landing-page">
+      <div class="hero-content">
+        <div class="hero-image-container">
+          <img src="/shige-image.jpg" alt="Hymnal" class="hero-image">
+        </div>
+        <h1 class="hero-tagline">Songs of Faith, Echoes of Grace</h1>
+        <button id="enter-app-btn" class="enter-app-btn">進入詩歌</button>
+      </div>
+    </div>
+
+    <!-- Navbar Toggle Button (Desktop Only) -->
+    <button id="navbar-toggle-btn" class="navbar-toggle-btn" aria-label="Toggle search bar" title="顯示/隱藏搜尋欄">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="18 15 12 9 6 15"></polyline>
+      </svg>
+    </button>
+
+    <div class="navbar">
+      <!-- Radio buttons for label size -->
+      <div>
+          <input type="radio" id="radio-large" name="label-size" value="ch" checked>
+          <label for="radio-large">大本</label>
+  
+          <input type="radio" id="radio-small" name="label-size" value="ts">
+          <label for="radio-small"> 小本 </label>
+      </div>
+  
+      <!-- Input field -->
+      <input id="input-field" type="number" placeholder="輸入詩歌">
+  <!-- Font size control buttons -->
+  <div>
+    <button type="button" id="decrease-font-btn" title="字體縮小">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        <text x="2" y="18" font-size="14" font-weight="bold" fill="currentColor">A</text>
+        <text x="13" y="14" font-size="12" font-weight="bold" fill="currentColor">−</text>
+      </svg>
+    </button>
+    <button type="button" id="increase-font-btn" title="字體加大">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        <text x="2" y="18" font-size="14" font-weight="bold" fill="currentColor">A</text>
+        <text x="13" y="10" font-size="12" font-weight="bold" fill="currentColor">+</text>
+      </svg>
+    </button>
+</div>
+    </div>
+    <div class="container" id="app"></div>
+    <!-- <div id="app"></div> -->
+    <!-- <script type="module" src="/main.js"></script> -->
+
+
+
+
+    <script>
+        // Only register service worker in production (not localhost)
+        if ('serviceWorker' in navigator) {
+            const isProduction = window.location.hostname !== 'localhost' &&
+                                window.location.hostname !== '127.0.0.1';
+
+            if (isProduction) {
+                navigator.serviceWorker.register('service-worker.js')
+                    .then(registration => {
+                        console.log('Service Worker registered with scope:', registration.scope);
+                    })
+                    .catch(error => {
+                        console.log('Service Worker registration failed:', error);
+                    });
+            } else {
+                console.log('Service Worker disabled in development mode');
+            }
+        }
+    </script>
+
+    <script type="module">
+        import { songDB } from './songDB.js';
+        // Function to find all objects with the same hymnID
+        // Example usage
+        // document.addEventListener('DOMContentLoaded', () => {
+        //     const hymnIDToFind = '248';
+        //     const matchingObjects = findObjectsWithHymnID(hymnIDToFind);
+        //     const matchingHymn = findObjectsWithEdition(matchingObjects, 'ch')
+        //     console.log(matchingHymn);
+        // });
+
+        function findObjectsWithHymnID(hymnID) {
+            return songDB.filter(song => song.hymnID === hymnID);
+        }
+        function findObjectsWithEdition(matchingObjects, edition) {
+            return matchingObjects.filter(song => song.edition === edition);
+        }
+
+        // Extract text content from HTML string
+        function extractTextFromHTML(htmlString) {
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlString;
+            return tempDiv.textContent || tempDiv.innerText || '';
+        }
+
+        // Search hymns by lyrics content
+        function searchHymnsByLyrics(query) {
+            if (!query || query.trim() === '') {
+                return [];
+            }
+
+            const searchTerm = query.toLowerCase().trim();
+            const results = [];
+
+            songDB.forEach(song => {
+                const text = extractTextFromHTML(song.html).toLowerCase();
+                if (text.includes(searchTerm)) {
+                    // Find a snippet around the match for preview
+                    const index = text.indexOf(searchTerm);
+                    const start = Math.max(0, index - 30);
+                    const end = Math.min(text.length, index + searchTerm.length + 30);
+                    let preview = extractTextFromHTML(song.html).substring(start, end);
+
+                    if (start > 0) preview = '...' + preview;
+                    if (end < text.length) preview = preview + '...';
+
+                    results.push({
+                        id: song.id,
+                        hymnID: song.hymnID,
+                        edition: song.edition,
+                        html: song.html,
+                        preview: preview
+                    });
+                }
+            });
+
+            return results;
+        }
+
+        // Display search results
+        function displaySearchResults(results) {
+            const resultsContainer = document.getElementById('search-results');
+
+            if (results.length === 0) {
+                resultsContainer.innerHTML = '<p class="search-empty-state">No hymns found</p>';
+                return;
+            }
+
+            let html = '';
+            results.forEach(result => {
+                const editionLabel = result.edition === 'ch' ? '大本' : '小本';
+                html += `
+                    <div class="search-result-item" data-hymn-id="${result.hymnID}" data-edition="${result.edition}">
+                        <div>
+                            <span class="search-result-number">#${result.hymnID}</span>
+                            <span class="search-result-edition">${editionLabel}</span>
+                        </div>
+                        <div class="search-result-preview">${result.preview}</div>
+                    </div>
+                `;
+            });
+
+            resultsContainer.innerHTML = html;
+        }
+
+        // Main function to search and display hymn
+        async function searchHymn() {
+            const inputField = document.getElementById('input-field');
+            const inputValue = inputField.value.trim();
+
+            // Don't search if landing page is still visible
+            const landingPage = document.getElementById('landing-page');
+            if (landingPage && !landingPage.classList.contains('hidden')) {
+                return;
+            }
+
+            // Error checking for input value
+            if (inputValue === '') {
+                document.getElementById('app').innerHTML = '';
+                return;
+            }
+
+            let labelSize = '';
+            const radioLarge = document.getElementById('radio-large');
+            const radioSmall = document.getElementById('radio-small');
+
+            // Get value of selected radio button
+            if (radioLarge.checked) {
+                labelSize = radioLarge.value;
+            } else if (radioSmall.checked) {
+                labelSize = radioSmall.value;
+            } else {
+                alert('Please select a label size.');
+                return;
+            }
+            console.log( 'daben or xiaoben: ', labelSize, inputValue )
+            const matchingObjects = findObjectsWithHymnID(inputValue);
+            console.log(matchingObjects);
+            const matchingHymn = findObjectsWithEdition(matchingObjects, labelSize)
+            console.log(matchingHymn);
+            if (matchingHymn.length === 1) {
+                document.getElementById('app').innerHTML = matchingHymn[0].html
+            } else {
+                const shigeben = labelSize === 'ch' ? '大本' : '小本'
+                const notFoundMessage = `
+                    <div style="text-align: center; padding: 40px 20px; color: #666;">
+                        <h2 style="color: #e74c3c; margin-bottom: 10px;">找不到詩歌</h2>
+                        <p style="font-size: 1.2em;">沒找到 ${shigeben} 詩歌 第 ${inputValue} 首</p>
+                        <p>請確認詩歌編號是否正確</p>
+                    </div>
+                `;
+                document.getElementById('app').innerHTML = notFoundMessage;
+                console.log(`沒找到 ${shigeben} 詩歌 第 ${inputValue} 首`)
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const increaseFontBtn = document.getElementById('increase-font-btn');
+            const decreaseFontBtn = document.getElementById('decrease-font-btn');
+            const inputField = document.getElementById('input-field');
+            const radioLarge = document.getElementById('radio-large');
+            const radioSmall = document.getElementById('radio-small');
+            const vocalFab = document.getElementById('vocal-fab');
+            const musicFab = document.getElementById('music-fab');
+            const stopFab = document.getElementById('stop-fab');
+            const navbarToggleBtn = document.getElementById('navbar-toggle-btn');
+            const navbar = document.querySelector('.navbar');
+            const container = document.querySelector('.container');
+            const landingPage = document.getElementById('landing-page');
+            const enterAppBtn = document.getElementById('enter-app-btn');
+
+            // Store current mp3 URLs
+            let currentVocalUrl = null;
+            let currentMusicUrl = null;
+            let currentAudio = null;
+
+            // Debounce function
+            function debounce(func, wait) {
+                let timeout;
+                return function executedFunction(...args) {
+                    const later = () => {
+                        clearTimeout(timeout);
+                        func(...args);
+                    };
+                    clearTimeout(timeout);
+                    timeout = setTimeout(later, wait);
+                };
+            }
+
+            // Function to check for mp3 links using Cloud Function
+            async function checkMp3Links(hymnNumber, edition) {
+                // Hide buttons initially
+                vocalFab.classList.remove('show');
+                musicFab.classList.remove('show');
+                currentVocalUrl = null;
+                currentMusicUrl = null;
+
+                if (!hymnNumber || hymnNumber.trim() === '') {
+                    return;
+                }
+
+                // Check if online
+                if (!navigator.onLine) {
+                    console.log('No internet connection');
+                    return;
+                }
+
+                try {
+                    // Use full URL for development, relative path for production
+                    const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+                    const baseUrl = isDevelopment
+                        ? 'https://us-central1-shige-app-2022.cloudfunctions.net/getHymnMp3'
+                        : '/api/getHymnMp3';
+
+                    const apiUrl = `${baseUrl}?hymnNumber=${hymnNumber}&edition=${edition}`;
+                    console.log('DEBUG - hostname:', window.location.hostname);
+                    console.log('DEBUG - isDevelopment:', isDevelopment);
+                    console.log('DEBUG - Calling API:', apiUrl);
+                    const response = await fetch(apiUrl);
+                    console.log('DEBUG - Response status:', response.status);
+                    console.log('DEBUG - Response content-type:', response.headers.get('content-type'));
+
+                    if (!response.ok) {
+                        console.log('Failed to fetch hymn mp3 links');
+                        return;
+                    }
+
+                    const data = await response.json();
+
+                    if (data.success && data.mp3Links) {
+                        // Check for vocal mp3
+                        if (data.mp3Links.vocal) {
+                            currentVocalUrl = data.mp3Links.vocal;
+                            vocalFab.classList.add('show');
+                            console.log('Found vocal mp3:', currentVocalUrl);
+                        }
+
+                        // Check for full mp3 (prioritize full over instrumental)
+                        if (data.mp3Links.full) {
+                            currentMusicUrl = data.mp3Links.full;
+                            musicFab.classList.add('show');
+                            console.log('Found full mp3:', currentMusicUrl);
+                        } else if (data.mp3Links.instrumental) {
+                            currentMusicUrl = data.mp3Links.instrumental;
+                            musicFab.classList.add('show');
+                            console.log('Found instrumental mp3:', currentMusicUrl);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error checking mp3 links:', error);
+                }
+            }
+
+            // Debounced version of checkMp3Links
+            const debouncedCheckMp3 = debounce((hymnNumber, edition) => {
+                checkMp3Links(hymnNumber, edition);
+            }, 500);
+
+            // Function to play audio
+            function playAudio(url) {
+                if (currentAudio) {
+                    currentAudio.pause();
+                    currentAudio = null;
+                }
+                currentAudio = new Audio(url);
+                currentAudio.play();
+
+                // Show stop button when playing
+                stopFab.classList.add('show');
+
+                // Hide stop button when audio ends
+                currentAudio.addEventListener('ended', function() {
+                    stopFab.classList.remove('show');
+                });
+
+                // Handle errors
+                currentAudio.addEventListener('error', function() {
+                    stopFab.classList.remove('show');
+                    console.error('Error playing audio');
+                });
+            }
+
+            // Function to stop audio
+            function stopAudio() {
+                if (currentAudio) {
+                    currentAudio.pause();
+                    currentAudio.currentTime = 0;
+                    currentAudio = null;
+                    stopFab.classList.remove('show');
+                }
+            }
+
+            // Radio button changes
+            radioLarge.addEventListener('change', async function() {
+                await searchHymn();
+                const edition = radioLarge.checked ? 'ch' : 'ts';
+                debouncedCheckMp3(inputField.value, edition);
+            });
+
+            radioSmall.addEventListener('change', async function() {
+                await searchHymn();
+                const edition = radioSmall.checked ? 'ts' : 'ch';
+                debouncedCheckMp3(inputField.value, edition);
+            });
+
+            // Input field changes
+            inputField.addEventListener('input', async function() {
+                await searchHymn();
+                const edition = radioLarge.checked ? 'ch' : 'ts';
+                debouncedCheckMp3(inputField.value, edition);
+            });
+
+
+            // Increase font size button functionality
+            increaseFontBtn.addEventListener('click', function() {
+                const container = document.getElementById('app');
+                const currentFontSize = parseFloat(getComputedStyle(container).fontSize);
+                const newFontSize = currentFontSize + 2;
+                container.style.fontSize = `${newFontSize}px`;
+            });
+
+            // Decrease font size button functionality
+            decreaseFontBtn.addEventListener('click', function() {
+                const container = document.getElementById('app');
+                const currentFontSize = parseFloat(getComputedStyle(container).fontSize);
+                const newFontSize = currentFontSize - 2;
+                container.style.fontSize = `${newFontSize}px`;
+            });
+
+            // Search panel functionality
+            const searchFab = document.getElementById('search-fab');
+            const searchPanel = document.getElementById('search-panel');
+            const closeSearchBtn = document.getElementById('close-search');
+            const searchInput = document.getElementById('search-input');
+
+            // Open search panel
+            searchFab.addEventListener('click', function() {
+                searchPanel.classList.add('open');
+                // Auto-focus search input
+                setTimeout(() => {
+                    searchInput.focus();
+                }, 300);
+            });
+
+            // Close search panel
+            closeSearchBtn.addEventListener('click', function() {
+                searchPanel.classList.remove('open');
+                searchInput.value = '';
+                document.getElementById('search-results').innerHTML = '<p class="search-empty-state">Enter keywords to search hymns</p>';
+            });
+
+            // Close on ESC key
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape' && searchPanel.classList.contains('open')) {
+                    searchPanel.classList.remove('open');
+                    searchInput.value = '';
+                    document.getElementById('search-results').innerHTML = '<p class="search-empty-state">Enter keywords to search hymns</p>';
+                }
+            });
+
+            // Search input event listener
+            searchInput.addEventListener('input', function() {
+                const query = searchInput.value.trim();
+
+                if (query === '') {
+                    document.getElementById('search-results').innerHTML = '<p class="search-empty-state">Enter keywords to search hymns</p>';
+                    return;
+                }
+
+                const results = searchHymnsByLyrics(query);
+                displaySearchResults(results);
+
+                // Add click handlers to results
+                document.querySelectorAll('.search-result-item').forEach(item => {
+                    item.addEventListener('click', function() {
+                        const hymnID = this.getAttribute('data-hymn-id');
+                        const edition = this.getAttribute('data-edition');
+
+                        // Find and display the hymn
+                        const matchingObjects = findObjectsWithHymnID(hymnID);
+                        const matchingHymn = findObjectsWithEdition(matchingObjects, edition);
+
+                        if (matchingHymn.length === 1) {
+                            document.getElementById('app').innerHTML = matchingHymn[0].html;
+
+                            // Update the radio button selection
+                            if (edition === 'ch') {
+                                document.getElementById('radio-large').checked = true;
+                            } else {
+                                document.getElementById('radio-small').checked = true;
+                            }
+
+                            // Update the hymn number input field
+                            document.getElementById('input-field').value = hymnID;
+
+                            // Fetch MP3 links if internet connection is available
+                            checkMp3Links(hymnID, edition);
+
+                            // Close the search panel after selecting a hymn
+                            searchPanel.classList.remove('open');
+                            searchInput.value = '';
+                        }
+                    });
+                });
+            });
+
+            // Vocal button click handler
+            vocalFab.addEventListener('click', function() {
+                if (currentVocalUrl) {
+                    playAudio(currentVocalUrl);
+                }
+            });
+
+            // Music button click handler
+            musicFab.addEventListener('click', function() {
+                if (currentMusicUrl) {
+                    playAudio(currentMusicUrl);
+                }
+            });
+
+            // Stop button click handler
+            stopFab.addEventListener('click', function() {
+                stopAudio();
+            });
+
+            // Navbar toggle button click handler
+            navbarToggleBtn.addEventListener('click', function() {
+                navbar.classList.toggle('hidden');
+                container.classList.toggle('navbar-hidden');
+                navbarToggleBtn.classList.toggle('navbar-hidden');
+
+                // Save state to localStorage
+                const isHidden = navbar.classList.contains('hidden');
+                localStorage.setItem('navbarHidden', isHidden);
+            });
+
+            // Restore navbar state from localStorage on page load
+            const navbarHidden = localStorage.getItem('navbarHidden') === 'true';
+            if (navbarHidden) {
+                navbar.classList.add('hidden');
+                container.classList.add('navbar-hidden');
+                navbarToggleBtn.classList.add('navbar-hidden');
+            }
+
+            // Landing page enter button handler
+            enterAppBtn.addEventListener('click', function() {
+                // Hide landing page
+                landingPage.classList.add('hidden');
+
+                // Set to big book hymn 1
+                radioLarge.checked = true;
+                inputField.value = '1';
+                searchHymn();
+
+                // Check for mp3 links
+                const edition = 'ch';
+                checkMp3Links('1', edition);
+            });
+        });
+    </script>
+
+    <!-- Floating Stop Button (FAB) -->
+    <button id="stop-fab" class="stop-fab" aria-label="Stop audio">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+      </svg>
+    </button>
+
+    <!-- Floating Music Note Button (FAB) -->
+    <button id="music-fab" class="music-fab" aria-label="Play music">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        <!-- Material Design Audiotrack Icon -->
+        <path d="M12 3v9.28c-.47-.17-.97-.28-1.5-.28C8.01 12 6 14.01 6 16.5S8.01 21 10.5 21c2.31 0 4.2-1.75 4.45-4H15V6h4V3h-7z"/>
+      </svg>
+    </button>
+
+    <!-- Floating Vocal Button (FAB) -->
+    <button id="vocal-fab" class="vocal-fab" aria-label="Play audio">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+        <!-- Material Design Mic Icon -->
+        <path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/>
+      </svg>
+    </button>
+
+    <!-- Floating Search Button (FAB) -->
+    <button id="search-fab" class="search-fab" aria-label="Open search">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="8"></circle>
+        <path d="m21 21-4.35-4.35"></path>
+      </svg>
+    </button>
+
+    <!-- Search Panel (Bottom Sheet) -->
+    <div id="search-panel" class="search-panel">
+      <div class="search-panel-header">
+        <input type="text" id="search-input" class="search-input" placeholder="Search hymns..." />
+        <button id="close-search" class="close-search-btn" aria-label="Close search">&times;</button>
+      </div>
+      <div class="search-panel-content">
+        <div id="search-results" class="search-results">
+          <p class="search-empty-state">Enter keywords to search hymns</p>
+        </div>
+      </div>
+    </div>
+
+  </body>
+</html>
+
