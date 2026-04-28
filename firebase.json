@@ -49,6 +49,18 @@
     ],
     "rewrites": [
       {
+        "source": "/api/getDynamicHymns",
+        "function": "getDynamicHymns"
+      },
+      {
+        "source": "/api/createDynamicHymn",
+        "function": "createDynamicHymn"
+      },
+      {
+        "source": "/admin/**",
+        "destination": "/index.html"
+      },
+      {
         "source": "/api/**",
         "function": "getHymnMp3"
       }

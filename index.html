@@ -12,6 +12,11 @@
     <!-- <script src="https://cdn.tailwindcss.com"></script> -->
     <title> 詩歌 </title>
     <link rel="stylesheet" href="./style.css">
+    <script>
+      if (window.location.pathname.replace(/\/$/, '') === '/admin/add-hymn') {
+        document.documentElement.classList.add('admin-route');
+      }
+    </script>
   </head>
 
   <body>
@@ -62,6 +67,72 @@
 </div>
     </div>
     <div class="container" id="app"></div>
+    <main id="admin-add-hymn-page" class="admin-page" hidden>
+      <div class="admin-shell">
+        <div class="admin-header">
+          <div>
+            <h1>Add Dynamic Hymn</h1>
+            <p>Writes to the Firestore collection <code>dynamicHymns</code>.</p>
+          </div>
+          <a href="/" class="admin-link">Back to app</a>
+        </div>
+
+        <form id="admin-add-hymn-form" class="admin-form">
+          <label>
+            Admin token
+            <input id="admin-token" type="password" autocomplete="current-password" required>
+          </label>
+
+          <div class="admin-grid">
+            <label>
+              Hymn number
+              <input id="admin-hymn-id" type="text" inputmode="numeric" required>
+            </label>
+
+            <label>
+              Edition
+              <select id="admin-edition" required>
+                <option value="user_upload" selected>User upload</option>
+                <option value="ch">Large book (ch)</option>
+                <option value="ts">Small book (ts)</option>
+              </select>
+            </label>
+          </div>
+
+          <label>
+            Title
+            <input id="admin-title" type="text">
+          </label>
+
+          <label>
+            Hymn HTML
+            <textarea id="admin-html" rows="12" required></textarea>
+          </label>
+
+          <label>
+            Search text
+            <textarea id="admin-search-text" rows="4"></textarea>
+          </label>
+
+          <label class="admin-checkbox">
+            <input id="admin-published" type="checkbox" checked>
+            Publish immediately
+          </label>
+
+          <div class="admin-actions">
+            <button type="submit">Save Hymn</button>
+            <button type="button" id="admin-preview-btn">Preview</button>
+          </div>
+
+          <p id="admin-status" class="admin-status" role="status"></p>
+        </form>
+
+        <section class="admin-preview" aria-label="Hymn preview">
+          <h2>Preview</h2>
+          <div id="admin-preview-content"></div>
+        </section>
+      </div>
+    </main>
     <!-- <div id="app"></div> -->
     <!-- <script type="module" src="/main.js"></script> -->
 
@@ -177,6 +248,81 @@
 
     <script type="module">
         import { songDB } from './songDB.js';
+        const DYNAMIC_HYMNS_CACHE_KEY = 'dynamicHymnsCache:v1';
+        const LIVE_CREATE_DYNAMIC_HYMN_URL = 'https://us-central1-shige-app-2022.cloudfunctions.net/createDynamicHymn';
+        let dynamicHymns = [];
+        let allHymns = [...songDB];
+
+        function normalizeHymn(rawHymn) {
+            return {
+                ...rawHymn,
+                id: String(rawHymn.id || `${rawHymn.edition}-${rawHymn.hymnID}`),
+                hymnID: String(rawHymn.hymnID || '').trim(),
+                edition: String(rawHymn.edition || '').trim(),
+                html: String(rawHymn.html || ''),
+                title: String(rawHymn.title || ''),
+                searchText: String(rawHymn.searchText || '')
+            };
+        }
+
+        function mergeHymnLists(baseHymns, addedHymns) {
+            const merged = new Map();
+
+            baseHymns.map(normalizeHymn).forEach(hymn => {
+                merged.set(`${hymn.edition}:${hymn.hymnID}`, hymn);
+            });
+
+            addedHymns.map(normalizeHymn).forEach(hymn => {
+                if (hymn.hymnID && ['ch', 'ts', 'user_upload'].includes(hymn.edition) && hymn.html) {
+                    merged.set(`${hymn.edition}:${hymn.hymnID}`, hymn);
+                }
+            });
+
+            return [...merged.values()];
+        }
+
+        function loadCachedDynamicHymns() {
+            try {
+                const cached = localStorage.getItem(DYNAMIC_HYMNS_CACHE_KEY);
+                return cached ? JSON.parse(cached) : [];
+            } catch (error) {
+                console.warn('Unable to load cached dynamic hymns:', error);
+                return [];
+            }
+        }
+
+        function saveCachedDynamicHymns(hymns) {
+            try {
+                localStorage.setItem(DYNAMIC_HYMNS_CACHE_KEY, JSON.stringify(hymns));
+            } catch (error) {
+                console.warn('Unable to cache dynamic hymns:', error);
+            }
+        }
+
+        async function refreshDynamicHymns() {
+            dynamicHymns = loadCachedDynamicHymns();
+            allHymns = mergeHymnLists(songDB, dynamicHymns);
+
+            if (!navigator.onLine) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/getDynamicHymns', { cache: 'no-store' });
+
+                if (!response.ok) {
+                    throw new Error(`Dynamic hymns request failed: ${response.status}`);
+                }
+
+                const data = await response.json();
+                dynamicHymns = Array.isArray(data.hymns) ? data.hymns : [];
+                saveCachedDynamicHymns(dynamicHymns);
+                allHymns = mergeHymnLists(songDB, dynamicHymns);
+            } catch (error) {
+                console.warn('Using cached dynamic hymns:', error);
+            }
+        }
+
         // Function to find all objects with the same hymnID
         // Example usage
         // document.addEventListener('DOMContentLoaded', () => {
@@ -187,10 +333,21 @@
         // });
 
         function findObjectsWithHymnID(hymnID) {
-            return songDB.filter(song => song.hymnID === hymnID);
+            return allHymns.filter(song => song.hymnID === hymnID);
         }
         function findObjectsWithEdition(matchingObjects, edition) {
             return matchingObjects.filter(song => song.edition === edition);
+        }
+
+        function isAdminAddHymnRoute() {
+            return window.location.pathname.replace(/\/$/, '') === '/admin/add-hymn';
+        }
+
+        function getCreateDynamicHymnUrl() {
+            const isLocalhost = window.location.hostname === 'localhost' ||
+                window.location.hostname === '127.0.0.1';
+
+            return isLocalhost ? LIVE_CREATE_DYNAMIC_HYMN_URL : '/api/createDynamicHymn';
         }
 
         // Extract text content from HTML string
@@ -209,14 +366,14 @@
             const searchTerm = query.toLowerCase().trim();
             const results = [];
 
-            songDB.forEach(song => {
-                const text = extractTextFromHTML(song.html).toLowerCase();
+            allHymns.forEach(song => {
+                const text = `${song.title || ''} ${song.searchText || ''} ${extractTextFromHTML(song.html)}`.toLowerCase();
                 if (text.includes(searchTerm)) {
                     // Find a snippet around the match for preview
                     const index = text.indexOf(searchTerm);
                     const start = Math.max(0, index - 30);
                     const end = Math.min(text.length, index + searchTerm.length + 30);
-                    let preview = extractTextFromHTML(song.html).substring(start, end);
+                    let preview = text.substring(start, end);
 
                     if (start > 0) preview = '...' + preview;
                     if (end < text.length) preview = preview + '...';
@@ -226,6 +383,7 @@
                         hymnID: song.hymnID,
                         edition: song.edition,
                         html: song.html,
+                        title: song.title,
                         preview: preview
                     });
                 }
@@ -245,7 +403,7 @@
 
             let html = '';
             results.forEach(result => {
-                const editionLabel = result.edition === 'ch' ? '大本' : '小本';
+                const editionLabel = result.edition === 'ch' ? '大本' : result.edition === 'ts' ? '小本' : '上傳';
                 html += `
                     <div class="search-result-item" data-hymn-id="${result.hymnID}" data-edition="${result.edition}">
                         <div>
@@ -325,6 +483,84 @@
             const container = document.querySelector('.container');
             const landingPage = document.getElementById('landing-page');
             const enterAppBtn = document.getElementById('enter-app-btn');
+
+            function showAdminStatus(message, type = '') {
+                const status = document.getElementById('admin-status');
+                status.textContent = message;
+                status.className = `admin-status ${type}`;
+            }
+
+            function renderAdminPreview() {
+                document.getElementById('admin-preview-content').innerHTML =
+                    document.getElementById('admin-html').value;
+            }
+
+            function initAddHymnAdminPage() {
+                document.title = 'Add Dynamic Hymn';
+                landingPage.classList.add('hidden');
+                document.querySelector('.navbar').hidden = true;
+                navbarToggleBtn.hidden = true;
+                container.hidden = true;
+                document.getElementById('search-fab').hidden = true;
+                document.getElementById('admin-add-hymn-page').hidden = false;
+
+                const savedToken = localStorage.getItem('dynamicHymnAdminToken') || '';
+                document.getElementById('admin-token').value = savedToken;
+
+                document.getElementById('admin-preview-btn').addEventListener('click', renderAdminPreview);
+
+                document.getElementById('admin-add-hymn-form').addEventListener('submit', async event => {
+                    event.preventDefault();
+                    showAdminStatus('Saving...');
+
+                    const token = document.getElementById('admin-token').value.trim();
+                    const payload = {
+                        hymnID: document.getElementById('admin-hymn-id').value.trim(),
+                        edition: document.getElementById('admin-edition').value,
+                        title: document.getElementById('admin-title').value.trim(),
+                        html: document.getElementById('admin-html').value.trim(),
+                        searchText: document.getElementById('admin-search-text').value.trim(),
+                        published: document.getElementById('admin-published').checked
+                    };
+
+                    try {
+                        const response = await fetch(getCreateDynamicHymnUrl(), {
+                            method: 'POST',
+                            headers: {
+                                'Authorization': `Bearer ${token}`,
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(payload)
+                        });
+                        const data = await response.json().catch(() => ({}));
+
+                        if (!response.ok) {
+                            throw new Error(data.error || `Request failed: ${response.status}`);
+                        }
+
+                        localStorage.setItem('dynamicHymnAdminToken', token);
+                        showAdminStatus(`Saved ${data.collection}/${data.id}`, 'success');
+                        renderAdminPreview();
+                    } catch (error) {
+                        showAdminStatus(error.message, 'error');
+                    }
+                });
+            }
+
+            if (isAdminAddHymnRoute()) {
+                initAddHymnAdminPage();
+                return;
+            }
+
+            refreshDynamicHymns().then(() => {
+                searchHymn();
+            });
+
+            window.addEventListener('online', () => {
+                refreshDynamicHymns().then(() => {
+                    searchHymn();
+                });
+            });
 
             // Store current mp3 URLs
             let currentVocalUrl = null;
