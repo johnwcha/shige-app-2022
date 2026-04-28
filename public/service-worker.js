@@ -1,4 +1,4 @@
-const CACHE_NAME = 'song-db-cache-v2';
+const CACHE_NAME = 'song-db-cache-v3';
 const CORE_ASSETS = [
     '/',
     '/index.html',
@@ -51,7 +51,12 @@ self.addEventListener('fetch', event => {
         return event.respondWith(fetch(event.request));
     }
 
-    if (event.request.mode === 'navigate') {
+    const url = new URL(event.request.url);
+    const isHtmlRequest = event.request.mode === 'navigate' ||
+        event.request.destination === 'document' ||
+        (url.origin === self.location.origin && (url.pathname === '/' || url.pathname === '/index.html'));
+
+    if (isHtmlRequest) {
         return event.respondWith(
             fetch(event.request)
                 .then(response => {
