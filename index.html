@@ -74,10 +74,63 @@
                 navigator.serviceWorker.register('service-worker.js')
                     .then(registration => {
                         console.log('Service Worker registered with scope:', registration.scope);
+
+                        const showUpdateButton = worker => {
+                            let button = document.getElementById('pwa-update-btn');
+
+                            if (!button) {
+                                button = document.createElement('button');
+                                button.id = 'pwa-update-btn';
+                                button.type = 'button';
+                                button.textContent = 'Update';
+                                button.style.cssText = 'position:fixed;left:50%;bottom:18px;z-index:9999;transform:translateX(-50%);padding:12px 18px;border:0;border-radius:999px;background:#111;color:#fff;font:600 16px system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.24);';
+                                document.body.appendChild(button);
+                            }
+
+                            button.onclick = () => {
+                                worker.postMessage({ type: 'SKIP_WAITING' });
+                            };
+                        };
+
+                        if (registration.waiting) {
+                            showUpdateButton(registration.waiting);
+                        }
+
+                        registration.addEventListener('updatefound', () => {
+                            const newWorker = registration.installing;
+
+                            if (!newWorker) {
+                                return;
+                            }
+
+                            newWorker.addEventListener('statechange', () => {
+                                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                    showUpdateButton(newWorker);
+                                }
+                            });
+                        });
+
+                        const checkForUpdates = () => registration.update().catch(() => {});
+                        window.addEventListener('focus', checkForUpdates);
+                        document.addEventListener('visibilitychange', () => {
+                            if (document.visibilityState === 'visible') {
+                                checkForUpdates();
+                            }
+                        });
+                        checkForUpdates();
                     })
                     .catch(error => {
                         console.log('Service Worker registration failed:', error);
                     });
+
+                let refreshing = false;
+                const hadController = Boolean(navigator.serviceWorker.controller);
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    if (hadController && !refreshing) {
+                        refreshing = true;
+                        window.location.reload();
+                    }
+                });
             } else {
                 console.log('Service Worker disabled in development mode');
             }

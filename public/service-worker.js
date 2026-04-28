@@ -1,18 +1,45 @@
-const CACHE_NAME = 'song-db-cache-v1';
-const urlsToCache = [
+const CACHE_NAME = 'song-db-cache-v2';
+const CORE_ASSETS = [
     '/',
-    '/style.css',
     '/index.html',
-    '/songDB.js'
+    '/manifest.json',
+    '/shige-image.jpg',
+    '/shige192.png',
+    '/shige512.png'
 ];
+
+async function cacheBuiltAssets(cache) {
+    const response = await fetch('/index.html', { cache: 'reload' });
+    const html = await response.clone().text();
+    await cache.put('/index.html', response);
+
+    const assetUrls = [...html.matchAll(/(?:src|href)="([^"]+)"/g)]
+        .map(match => match[1])
+        .filter(url => url.startsWith('/assets/'));
+
+    await Promise.all(assetUrls.map(url => cache.add(url).catch(() => null)));
+}
 
 self.addEventListener('install', event => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then(cache => {
-                console.log('Opened cache');
-                return cache.addAll(urlsToCache);
+            .then(async cache => {
+                await Promise.all(CORE_ASSETS.map(url => cache.add(url).catch(() => null)));
+                await cacheBuiltAssets(cache).catch(() => null);
             })
+            .then(() => self.skipWaiting())
+    );
+});
+
+self.addEventListener('activate', event => {
+    event.waitUntil(
+        caches.keys()
+            .then(keys => Promise.all(
+                keys
+                    .filter(key => key !== CACHE_NAME)
+                    .map(key => caches.delete(key))
+            ))
+            .then(() => self.clients.claim())
     );
 });
 
@@ -24,14 +51,42 @@ self.addEventListener('fetch', event => {
         return event.respondWith(fetch(event.request));
     }
 
+    if (event.request.mode === 'navigate') {
+        return event.respondWith(
+            fetch(event.request)
+                .then(response => {
+                    const copy = response.clone();
+                    caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+                    return response;
+                })
+                .catch(() => caches.match(event.request).then(response => response || caches.match('/index.html')))
+        );
+    }
+
     event.respondWith(
         caches.match(event.request)
             .then(response => {
-                // Cache hit - return response
                 if (response) {
                     return response;
                 }
-                return fetch(event.request);
+
+                return fetch(event.request).then(networkResponse => {
+                    if (
+                        event.request.method === 'GET' &&
+                        new URL(event.request.url).origin === self.location.origin
+                    ) {
+                        const copy = networkResponse.clone();
+                        caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+                    }
+
+                    return networkResponse;
+                });
             })
     );
+});
+
+self.addEventListener('message', event => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
 });
