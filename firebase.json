@@ -61,6 +61,10 @@
         "function": "getHymnYoutube"
       },
       {
+        "source": "/api/manageDynamicHymns",
+        "function": "manageDynamicHymns"
+      },
+      {
         "source": "/admin/**",
         "destination": "/index.html"
       }
