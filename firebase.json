@@ -57,12 +57,12 @@
         "function": "createDynamicHymn"
       },
       {
-        "source": "/admin/**",
-        "destination": "/index.html"
+        "source": "/api/getHymnYoutube",
+        "function": "getHymnYoutube"
       },
       {
-        "source": "/api/**",
-        "function": "getHymnMp3"
+        "source": "/admin/**",
+        "destination": "/index.html"
       }
     ]
   }

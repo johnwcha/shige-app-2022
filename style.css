@@ -11,9 +11,7 @@ body {
   .admin-route .navbar-toggle-btn,
   .admin-route .container,
   .admin-route .search-fab,
-  .admin-route .vocal-fab,
-  .admin-route .music-fab,
-  .admin-route .stop-fab {
+  .admin-route .youtube-fab {
       display: none !important;
   }
 
@@ -526,85 +524,17 @@ padding-top: 5px;
 padding-bottom: 15px; /* Add padding to top and bottom of each row */
 }
 
-/* Floating Stop Button (FAB) */
-.stop-fab {
-    position: fixed;
-    bottom: 230px;
-    right: 20px;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background-color: #e67e22;
-    color: white;
-    border: none;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    cursor: pointer;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    z-index: 999;
-    transition: background-color 0.3s ease, transform 0.2s ease;
-}
-
-.stop-fab.show {
-    display: flex;
-}
-
-.stop-fab:hover {
-    background-color: #d35400;
-    transform: scale(1.05);
-}
-
-.stop-fab:active {
-    transform: scale(0.95);
-}
-
-/* Floating Music Note Button (FAB) */
-.music-fab {
-    position: fixed;
-    bottom: 160px;
-    right: 20px;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background-color: #9b59b6;
-    color: white;
-    border: none;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    cursor: pointer;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    z-index: 999;
-    transition: background-color 0.3s ease, transform 0.2s ease;
-}
-
-.music-fab.show {
-    display: flex;
-}
-
-.music-fab:hover {
-    background-color: #8e44ad;
-    transform: scale(1.05);
-}
-
-.music-fab:active {
-    transform: scale(0.95);
-}
-
-/* Floating Vocal Button (FAB) */
-.vocal-fab {
+/* YouTube recording link */
+.youtube-fab {
     position: fixed;
     bottom: 90px;
     right: 20px;
     width: 56px;
     height: 56px;
     border-radius: 50%;
-    background-color: #e74c3c;
+    background-color: #c62828;
     color: white;
-    border: none;
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-    cursor: pointer;
     display: none;
     align-items: center;
     justify-content: center;
@@ -612,18 +542,10 @@ padding-bottom: 15px; /* Add padding to top and bottom of each row */
     transition: background-color 0.3s ease, transform 0.2s ease;
 }
 
-.vocal-fab.show {
-    display: flex;
-}
-
-.vocal-fab:hover {
-    background-color: #c0392b;
-    transform: scale(1.05);
-}
-
-.vocal-fab:active {
-    transform: scale(0.95);
-}
+.youtube-fab.show { display: flex; }
+.youtube-fab:hover { background-color: #a82020; transform: scale(1.05); }
+.youtube-fab:active { transform: scale(0.95); }
+.youtube-fab:focus-visible { outline: 3px solid #111; outline-offset: 3px; }
 
 /* Floating Search Button (FAB) */
 .search-fab {

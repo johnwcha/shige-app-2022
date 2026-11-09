@@ -2,6 +2,7 @@ const {onRequest} = require("firebase-functions/v2/https");
 const {logger} = require("firebase-functions");
 const {defineSecret} = require("firebase-functions/params");
 const admin = require("firebase-admin");
+const {normalizeYoutubeUrl, buildLegacyMediaIndex} = require("./hymn-media");
 
 admin.initializeApp();
 
@@ -20,6 +21,7 @@ function normalizeDynamicHymn(doc) {
     html: String(data.html || "").trim(),
     title: String(data.title || "").trim(),
     searchText: String(data.searchText || "").trim(),
+    youtubeUrl: normalizeYoutubeUrl(data.youtubeUrl),
     source: "dynamic",
     updatedAt: data.updatedAt && data.updatedAt.toDate ?
       data.updatedAt.toDate().toISOString() :
@@ -57,6 +59,11 @@ function validateDynamicHymnInput(body) {
   const html = String(body.html || "").trim();
   const searchText = String(body.searchText || "").trim();
   const published = Boolean(body.published);
+  const youtubeUrl = normalizeYoutubeUrl(body.youtubeUrl);
+
+  if (body.youtubeUrl && !youtubeUrl) {
+    return {error: "youtubeUrl must be a valid HTTPS YouTube video link"};
+  }
 
   if (!hymnID) {
     return {error: "hymnID is required"};
@@ -77,6 +84,8 @@ function validateDynamicHymnInput(body) {
       title,
       html,
       searchText: searchText || buildSearchText(title, html),
+      // Omitted fields preserve existing links on edits; an empty string clears it.
+      ...(body.youtubeUrl !== undefined ? {youtubeUrl} : {}),
       published,
     },
   };
@@ -160,94 +169,69 @@ exports.getDynamicHymns = onRequest({cors: true}, async (req, res) => {
   }
 });
 
-// Cloud Function v2 to fetch hymn mp3 links
-exports.getHymnMp3 = onRequest({cors: true}, async (req, res) => {
+// Cache the legacy label index per warm function instance to avoid a collection
+// scan on every selection. Concurrent cold requests share the same read.
+let legacyMediaCache;
+let legacyMediaExpiresAt = 0;
+let legacyMediaRead;
+
+async function getLegacyMediaIndex() {
+  if (legacyMediaCache && Date.now() < legacyMediaExpiresAt) {
+    return legacyMediaCache;
+  }
+  if (!legacyMediaRead) {
+    legacyMediaRead = db.collection("hymns")
+        .select("hymn", "link", "updated").get()
+        .then(snapshot => {
+          legacyMediaCache = buildLegacyMediaIndex(snapshot.docs);
+          legacyMediaExpiresAt = Date.now() + 5 * 60 * 1000;
+          return legacyMediaCache;
+        }).finally(() => {
+          legacyMediaRead = null;
+        });
+  }
+  return legacyMediaRead;
+}
+
+exports.getHymnYoutube = onRequest({cors: true}, async (req, res) => {
+  if (req.method !== "GET") {
+    return res.status(405).json({error: "Use GET"});
+  }
+  const {hymnNumber, edition} = req.query;
+  if (typeof hymnNumber !== "string" || !/^\d{1,10}$/.test(hymnNumber) ||
+      !DYNAMIC_HYMN_EDITIONS.includes(edition)) {
+    return res.status(400).json({
+      error: "Use a numeric hymnNumber and edition ch, ts, or user_upload",
+    });
+  }
   try {
-    const {hymnNumber, edition} = req.query;
-
-    // Validate input
-    if (!hymnNumber || !edition) {
-      return res.status(400).json({
-        error: "Missing required parameters: hymnNumber and edition",
-      });
-    }
-
-    if (!["ch", "ts"].includes(edition)) {
-      return res.status(400).json({
-        error: "Invalid edition. Must be 'ch' or 'ts'",
-      });
-    }
-
-    logger.info(`Fetching hymn ${edition}/${hymnNumber}`);
-
-    // Fetch the hymnal.net page
-    const url = `https://www.hymnal.net/zh/hymn/${edition}/${hymnNumber}`;
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      logger.error(`Failed to fetch hymn page: ${response.status}`);
-      return res.status(404).json({
-        error: "Hymn not found",
-      });
-    }
-
-    const htmlText = await response.text();
-
-    // Extract mp3 URLs using regex
-    const mp3Links = {};
-
-    // Look for vocal mp3 (pattern: ch_XXXX_vocal.mp3 or ts_XXXX_vocal.mp3)
-    // Handles both /Chinese/ (large book) and /ChineseTS/ (small book)
-    const vocalMatch = htmlText.match(
-        /https:\/\/www\.hymnal\.net\/Hymns\/Chinese(TS)?\/mp3\/[^"']+vocal\.mp3/,
-    );
-    if (vocalMatch) {
-      mp3Links.vocal = vocalMatch[0];
-      logger.info(`Found vocal mp3: ${vocalMatch[0]}`);
-    }
-
-    // Look for full mp3 (pattern: eXXXX_full.mp3)
-    const fullMatch = htmlText.match(
-        /https:\/\/www\.hymnal\.net\/Hymns\/Hymnal\/mp3\/[^"']+full\.mp3/,
-    );
-    if (fullMatch) {
-      mp3Links.full = fullMatch[0];
-      logger.info(`Found full mp3: ${fullMatch[0]}`);
-    }
-
-    // Look for instrumental mp3 (pattern: eXXXX_i.mp3)
-    const instrumentalMatch = htmlText.match(
-        /https:\/\/www\.hymnal\.net\/Hymns\/Hymnal\/mp3\/[^"']+_i\.mp3(\?v=\d+)?/,
-    );
-    if (instrumentalMatch) {
-      mp3Links.instrumental = instrumentalMatch[0];
-      logger.info(`Found instrumental mp3: ${instrumentalMatch[0]}`);
-    }
-
-    // Look for NewSongs mp3 (pattern: nsXXXX.mp3)
-    const newSongsMatch = htmlText.match(
-        /https:\/\/www\.hymnal\.net\/Hymns\/NewSongs\/mp3\/[^"']+\.mp3(\?v=\d+)?/,
-    );
-    if (newSongsMatch) {
-      // Treat NewSongs as music (since they're typically full recordings)
-      if (!mp3Links.full) {
-        mp3Links.full = newSongsMatch[0];
-        logger.info(`Found NewSongs mp3: ${newSongsMatch[0]}`);
-      }
-    }
-
-    // Return the mp3 links
-    return res.json({
-      success: true,
-      hymnNumber,
-      edition,
-      mp3Links,
+    // Exact string matching preserves dynamic IDs such as 001, which are
+    // different songs from the bundled hymn numbered 1.
+    const snapshot = await db.collection(DYNAMIC_HYMNS_COLLECTION)
+        .where("hymnID", "==", hymnNumber).get();
+    const dynamic = snapshot.docs.filter(doc => {
+      const data = doc.data();
+      return data.edition === edition && data.published === true;
+    }).sort((a, b) => {
+      const timestamp = doc => doc.data().updatedAt?.toMillis?.() || 0;
+      return timestamp(b) - timestamp(a) || a.id.localeCompare(b.id);
     });
+
+    let youtubeUrl = null;
+    let source = null;
+    if (dynamic.length) {
+      // A dynamic lyric override must never inherit a different song's link.
+      youtubeUrl = normalizeYoutubeUrl(dynamic[0].data().youtubeUrl);
+      if (youtubeUrl) source = "dynamicHymns";
+    } else if (edition !== "user_upload") {
+      const index = await getLegacyMediaIndex();
+      youtubeUrl = index.get(`${edition}:${hymnNumber.replace(/^0+(?=\d)/, "")}`) || null;
+      if (youtubeUrl) source = "hymns";
+    }
+    res.set("Cache-Control", "public, max-age=60, s-maxage=60");
+    return res.json({success: true, hymnNumber, edition, youtubeUrl, source});
   } catch (error) {
-    logger.error("Error in getHymnMp3:", error);
-    return res.status(500).json({
-      error: "Internal server error",
-      message: error.message,
-    });
+    logger.error("Error in getHymnYoutube:", error);
+    return res.status(500).json({error: "Unable to load hymn video"});
   }
 });

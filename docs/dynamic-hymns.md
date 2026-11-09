@@ -33,7 +33,8 @@ Use this collection:
 dynamicHymns
 ```
 
-The existing `hymns` collection is intentionally not used.
+The existing `hymns` collection supplies legacy YouTube recording links;
+it is not used for dynamic lyric additions. See [YouTube lookup](youtube-media.md).
 
 ## Document Schema
 
@@ -55,6 +56,7 @@ Recommended fields:
 | --- | --- | --- |
 | `title` | string | Optional title; included in search. |
 | `searchText` | string | Plain-text lyrics/search keywords; included in search. |
+| `youtubeUrl` | string | Optional HTTPS YouTube video link, returned by the API and editable in the admin form. |
 | `updatedAt` | timestamp | Useful for tracking edits in Firestore. |
 | `createdAt` | timestamp | Useful for tracking when the hymn was added. |
 | `notes` | string | Internal notes; currently not shown in the app. |
@@ -110,7 +112,7 @@ additions. If dynamic hymn volume grows large, move the cache to IndexedDB.
 
 1. Open `/admin/add-hymn`.
 2. Enter the admin token.
-3. Fill in hymn number, edition, title, HTML, and search text.
+3. Fill in hymn number, edition, title, HTML, search text, and an optional YouTube link.
 4. Leave `Publish immediately` checked if the hymn should appear in the app.
 5. Submit the form.
 6. Open the app online. The new hymn should appear in number lookup and search.
