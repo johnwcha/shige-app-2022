@@ -118,7 +118,8 @@ The old `/api/**` catch-all rewrite is replaced by the explicit YouTube route.
 The retired `getHymnMp3` export is removed from source. The selective deploy
 above leaves any previously deployed MP3 function in place; remove that old
 function separately after older clients have moved to the new app version.
-This change has not been deployed.
+Deployed to `shige-app-2022` on November 8, 2026, with the functions runtime
+upgraded to Node.js 22 because Node.js 20 no longer accepts deployments.
 
 ## Verification
 
@@ -133,8 +134,11 @@ This change has not been deployed.
 - Headless Chrome checks pass at a mobile viewport for number and edition
   changes, dynamic `001`, lyric search selection, blank input, offline/reconnect,
   the external YouTube link, and the admin form payload, with no page errors.
-  Those browser checks use stubbed API responses; video playback and the deployed
-  function have not been verified.
+  Those browser checks use stubbed API responses; video playback has not been
+  verified. After deployment, live HTTP checks confirmed the built site and
+  assets, legacy `ch/378` and dynamic `ts/001` YouTube lookups, and all eight
+  published dynamic hymns with YouTube fields. All nine tests also pass on
+  Node.js 22.
 
 ## Research sources
 
